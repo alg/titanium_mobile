@@ -56,6 +56,7 @@ import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.cookie.Cookie;
 import org.apache.http.entity.AbstractHttpEntity;
+import org.apache.http.entity.FileEntity;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntity;
 import org.apache.http.entity.mime.content.ContentBody;
@@ -132,6 +133,7 @@ public class TiHTTPClient
 	private ArrayList<NameValuePair> nvPairs;
 	private HashMap<String, ContentBody> parts;
 	private String data;
+  private TiBaseFile dataFile;
 	private boolean needMultipart;
 	private Thread clientThread;
 	private boolean aborted;
@@ -1015,6 +1017,15 @@ public class TiHTTPClient
 					this.url = uri.toString();
 				}
 
+      } else if (userData instanceof TiBaseFile || userData instanceof TiFileProxy) {
+        // Sending binary objects in the request body as-is.
+        // Important for PUT requests. (Sending files to S3)
+        if (userData instanceof TiFileProxy) {
+          userData = ((TiFileProxy) userData).getBaseFile();
+        }
+
+        dataFile = (TiBaseFile)userData;
+        totalLength = dataFile.size();
 			} else {
 				addStringData(TiConvert.toString(userData));
 			}
@@ -1066,63 +1077,70 @@ public class TiHTTPClient
 					credentials = null;
 				}
 				client.setRedirectHandler(new RedirectHandler());
-				if(request instanceof BasicHttpEntityEnclosingRequest) {
+				if (request instanceof BasicHttpEntityEnclosingRequest) {
 
-					UrlEncodedFormEntity form = null;
-					MultipartEntity mpe = null;
+          HttpEntity ent = null;
 
-					if (nvPairs.size() > 0) {
-						try {
-							form = new UrlEncodedFormEntity(nvPairs, "UTF-8");
+          if (dataFile != null) {
+            ent = new FileEntity(dataFile.getNativeFile(), "");
+          } else {
+            UrlEncodedFormEntity form = null;
+            MultipartEntity mpe = null;
 
-						} catch (UnsupportedEncodingException e) {
-							Log.e(LCAT, "Unsupported encoding: ", e);
-						}
-					}
+            if (nvPairs.size() > 0) {
+              try {
+                form = new UrlEncodedFormEntity(nvPairs, "UTF-8");
 
-					if (parts.size() > 0 && needMultipart) {
-						mpe = new MultipartEntity();
-						for(String name : parts.keySet()) {
-							if (DBG) {
-								Log.d(LCAT, "adding part " + name + ", part type: " + parts.get(name).getMimeType() + ", len: " + parts.get(name).getContentLength());
-							}
-							mpe.addPart(name, parts.get(name));
-						}
+              } catch (UnsupportedEncodingException e) {
+                Log.e(LCAT, "Unsupported encoding: ", e);
+              }
+            }
 
-						if (form != null) {
-							try {
-								ByteArrayOutputStream bos = new ByteArrayOutputStream((int) form.getContentLength());
-								form.writeTo(bos);
-								mpe.addPart("form", new StringBody(bos.toString(), "application/x-www-form-urlencoded", Charset.forName("UTF-8")));
+            if (parts.size() > 0 && needMultipart) {
+              ent = mpe = new MultipartEntity();
+              for(String name : parts.keySet()) {
+                if (DBG) {
+                  Log.d(LCAT, "adding part " + name + ", part type: " + parts.get(name).getMimeType() + ", len: " + parts.get(name).getContentLength());
+                }
+                mpe.addPart(name, parts.get(name));
+              }
 
-							} catch (UnsupportedEncodingException e) {
-								Log.e(LCAT, "Unsupported encoding: ", e);
+              if (form != null) {
+                try {
+                  ByteArrayOutputStream bos = new ByteArrayOutputStream((int) form.getContentLength());
+                  form.writeTo(bos);
+                  mpe.addPart("form", new StringBody(bos.toString(), "application/x-www-form-urlencoded", Charset.forName("UTF-8")));
 
-							} catch (IOException e) {
-								Log.e(LCAT, "Error converting form to string: ", e);
-							}
-						}
+                } catch (UnsupportedEncodingException e) {
+                  Log.e(LCAT, "Unsupported encoding: ", e);
 
-						HttpEntityEnclosingRequest e = (HttpEntityEnclosingRequest) request;
+                } catch (IOException e) {
+                  Log.e(LCAT, "Error converting form to string: ", e);
+                }
+              }
+            } else {
+              handleURLEncodedData(form);
+            }
+          } 
 
-						ProgressEntity progressEntity = new ProgressEntity(mpe, new ProgressListener() {
-							public void progress(int progress) {
-								KrollFunction cb = getCallback(ON_SEND_STREAM);
-								if (cb != null) {
-									KrollDict data = new KrollDict();
-									data.put("progress", ((double)progress)/totalLength);
-									data.put("source", proxy);
-									cb.callAsync(proxy.getKrollObject(), data);
-								}
-							}
-						});
-						e.setEntity(progressEntity);
+          if (ent != null) {
+            HttpEntityEnclosingRequest e = (HttpEntityEnclosingRequest) request;
 
-						e.addHeader("Length", totalLength+"");
+            ProgressEntity progressEntity = new ProgressEntity(ent, new ProgressListener() {
+              public void progress(int progress) {
+                KrollFunction cb = getCallback(ON_SEND_STREAM);
+                if (cb != null) {
+                  KrollDict data = new KrollDict();
+                  data.put("progress", ((double)progress)/totalLength);
+                  data.put("source", proxy);
+                  cb.callAsync(proxy.getKrollObject(), data);
+                }
+              }
+            });
+            e.setEntity(progressEntity);
 
-					} else {
-						handleURLEncodedData(form);
-					}
+            e.addHeader("Length", totalLength + "");
+          }
 				}
 
 				// set request specific parameters
