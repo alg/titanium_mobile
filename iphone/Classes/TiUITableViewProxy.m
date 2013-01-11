@@ -449,7 +449,7 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 
 -(void)insertRowBefore:(id)args
 {
-//	ENSURE_UI_THREAD(insertRowBefore,args);
+	ENSURE_UI_THREAD(insertRowBefore,args);
 	
 	int index = [TiUtils intValue:[args objectAtIndex:0]];
 	NSDictionary *data = [args objectAtIndex:1];
@@ -529,7 +529,7 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 
 -(void)insertRowAfter:(id)args
 {
-//	ENSURE_UI_THREAD(insertRowAfter,args);
+	ENSURE_UI_THREAD(insertRowAfter,args);
 	
 	int index = [TiUtils intValue:[args objectAtIndex:0]];
 	NSDictionary *data = [args objectAtIndex:1];
@@ -606,7 +606,7 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 
 -(void)appendRow:(id)args
 {
-//	ENSURE_UI_THREAD(appendRow,args);
+	ENSURE_UI_THREAD(appendRow,args);
 	
 	id data = [args objectAtIndex:0];
 	NSDictionary *anim = [args count] > 1 ? [args objectAtIndex:1] : nil;
