@@ -24,6 +24,7 @@ import android.graphics.Color;
 import android.hardware.Camera;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.PictureCallback;
+import android.hardware.Camera.AutoFocusCallback;
 import android.hardware.Camera.Size;
 import android.net.Uri;
 import android.os.Bundle;
@@ -115,8 +116,21 @@ public class TiCameraActivity extends TiBaseActivity implements SurfaceHolder.Ca
 			Size previewSize = getOptimalPreviewSize(supportedPreviewSizes, width, height, aspectRatio);
 			if (previewSize != null) {
 				param.setPreviewSize(previewSize.width, previewSize.height);
-				camera.setParameters(param);
 			}
+
+			// Set appropriate focus mode if supported.
+			List<String> supportedFocusModes = param.getSupportedFocusModes();
+      // NOTE: FOCUS_MODE_CONTINUOUS_PICTURE is added in API level 14
+			// if (supportedFocusModes.contains(MediaModule.FOCUS_MODE_CONTINUOUS_PICTURE)) {
+			// 	param.setFocusMode(MediaModule.FOCUS_MODE_CONTINUOUS_PICTURE);
+			// } else
+      if (supportedFocusModes.contains(Parameters.FOCUS_MODE_AUTO)) {
+				param.setFocusMode(Parameters.FOCUS_MODE_AUTO);
+			} else if (supportedFocusModes.contains(Parameters.FOCUS_MODE_MACRO)) {
+				param.setFocusMode(Parameters.FOCUS_MODE_MACRO);
+			}
+
+      camera.setParameters(param);
 
 			previewRunning = true;
 			camera.startPreview();
@@ -263,7 +277,21 @@ public class TiCameraActivity extends TiBaseActivity implements SurfaceHolder.Ca
 	}
 
 	static public void takePicture() {
-		camera.takePicture(null, null, jpegCallback);
+    String focusMode = camera.getParameters().getFocusMode();
+		if (!(focusMode.equals(Parameters.FOCUS_MODE_EDOF) || focusMode.equals(Parameters.FOCUS_MODE_FIXED) 
+				|| focusMode.equals(Parameters.FOCUS_MODE_INFINITY))) {
+			AutoFocusCallback focusCallback = new AutoFocusCallback()
+			{
+				public void onAutoFocus(boolean success, Camera camera)
+				{
+					// Take the picture when the camera auto focus completes.
+					camera.takePicture(null, null, jpegCallback);
+				}
+			};
+			camera.autoFocus(focusCallback);
+		} else {
+			camera.takePicture(null, null, jpegCallback);
+		}
 	}
 
 	static PictureCallback jpegCallback = new PictureCallback() {
