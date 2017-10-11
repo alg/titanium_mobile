@@ -247,7 +247,7 @@ public class EmailDialogProxy extends TiViewProxy implements ActivityTransitionL
 					}
 				} else {
 					File nativeFile = fileProxy.getBaseFile().getNativeFile();
-					return Uri.TiFileProvider.createUriFrom(nativeFile);
+					return TiFileProvider.createUriFrom(nativeFile);
 				}
 			}
 		} else if (attachment instanceof TiBlob) {
